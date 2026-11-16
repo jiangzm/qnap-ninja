@@ -26,24 +26,28 @@ start_service() {
     echo "$QPKG_NAME is already running."
     return 0
   fi
-  # QPKG Web_Port is the package manager's configured WebUI port.
-  case "$QPKG_WEB_PORT" in
-    ''|*[!0-9]*) echo "Invalid WebUI port: $QPKG_WEB_PORT" >&2; exit 1 ;;
-  esac
-  if [ "$QPKG_WEB_PORT" -lt 1 ] || [ "$QPKG_WEB_PORT" -gt 65535 ]; then
-    echo "Invalid WebUI port: $QPKG_WEB_PORT" >&2
-    exit 1
+  
+  /bin/ln -sf "$QPKG_ROOT" /opt/ninjadesktop-lite
+  CONFIG_FILE="$XDG_CONFIG_HOME/ninjadesktop/appconfig.yaml"
+  if [ ! -f "$CONFIG_FILE" ]; then
+    # QPKG Web_Port is the package manager's configured WebUI port.
+    case "$QPKG_WEB_PORT" in
+      ''|*[!0-9]*) echo "Invalid WebUI port: $QPKG_WEB_PORT" >&2; exit 1 ;;
+    esac
+    if [ "$QPKG_WEB_PORT" -lt 1 ] || [ "$QPKG_WEB_PORT" -gt 65535 ]; then
+      echo "Invalid WebUI port: $QPKG_WEB_PORT" >&2
+      exit 1
+    fi
+    if [ -s "$TOKENFILE" ]; then
+      TOKEN=$(cat "$TOKENFILE")
+    else
+      TOKEN=$(openssl rand -hex 24) || { echo "Failed to generate WebUI token" >&2; exit 1; }
+      (umask 077; echo -n "$TOKEN" > "$TOKENFILE") || { echo "Failed to save WebUI token" >&2; exit 1; }
+    fi
+    "$CLI" config set listen 0.0.0.0 >/dev/null || { echo "Failed to configure WebUI listen address" >&2; exit 1; }
+    "$CLI" config set port "$QPKG_WEB_PORT" >/dev/null || { echo "Failed to configure WebUI port $QPKG_WEB_PORT" >&2; exit 1; }
+    "$CLI" config set token "$TOKEN" >/dev/null || { echo "Failed to configure WebUI token" >&2; exit 1; }
   fi
-  if [ -s "$TOKENFILE" ]; then
-    TOKEN=$(cat "$TOKENFILE")
-  else
-    TOKEN=$(openssl rand -hex 24) || { echo "Failed to generate WebUI token" >&2; exit 1; }
-    (umask 077; echo -n "$TOKEN" > "$TOKENFILE") || { echo "Failed to save WebUI token" >&2; exit 1; }
-  fi
-  /bin/ln -sf $QPKG_ROOT /opt/ninjadesktop-lite
-  "$CLI" config set listen 0.0.0.0 >/dev/null || { echo "Failed to configure WebUI listen address" >&2; exit 1; }
-  "$CLI" config set port "$QPKG_WEB_PORT" >/dev/null || { echo "Failed to configure WebUI port $QPKG_WEB_PORT" >&2; exit 1; }
-  "$CLI" config set token "$TOKEN" >/dev/null || { echo "Failed to configure WebUI token" >&2; exit 1; }
   "$CLI" start --headless >> "$LOGFILE" 2>&1 & echo $! > "$PIDFILE"
 }
 
