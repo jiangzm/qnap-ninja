@@ -3,7 +3,9 @@ CONF=/etc/config/qpkg.conf
 QPKG_NAME="ninja-lite"
 QPKG_ROOT=$(/sbin/getcfg "$QPKG_NAME" Install_Path -f "$CONF")
 QPKG_WEB_PORT=$(/sbin/getcfg "$QPKG_NAME" Web_Port -d 9190 -f "$CONF")
-PIDFILE="$QPKG_ROOT/ninjadesktop-lite.pid"
+PIDFILE="/var/run/ninja-lite.pid"
+LOGFILE="/var/log/ninja-lite.log"
+TOKENFILE="$QPKG_ROOT/.webui-token"
 CLI="$QPKG_ROOT/ninjadesktop-lite"
 
 export USER=admin
@@ -33,20 +35,22 @@ start_service() {
     echo "Invalid WebUI port: $QPKG_WEB_PORT" >&2
     exit 1
   fi
+  if [ -s "$TOKENFILE" ]; then
+    TOKEN=$(cat "$TOKENFILE")
+  else
+    if command -v openssl >/dev/null 2>&1; then
+      TOKEN=$(openssl rand -hex 24) || { echo "Failed to generate WebUI token" >&2; exit 1; }
+    else
+      TOKEN=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
+    fi
+    [ -n "$TOKEN" ] || { echo "Failed to generate WebUI token" >&2; exit 1; }
+    (umask 077; printf '%s\n' "$TOKEN" > "$TOKENFILE") || { echo "Failed to save WebUI token" >&2; exit 1; }
+  fi
   "$CLI" config set listen 0.0.0.0 >/dev/null || { echo "Failed to configure WebUI listen address" >&2; exit 1; }
   "$CLI" config set port "$QPKG_WEB_PORT" >/dev/null || { echo "Failed to configure WebUI port $QPKG_WEB_PORT" >&2; exit 1; }
-  "$CLI" start --headless >/dev/null 2>&1 &
-  echo $! > "$PIDFILE"
-
-  # Give the service a moment to initialize before querying its WebUI details.
-  sleep 2
-  WEBUI_INFO=$("$CLI" webui 2>&1)
-  WEBUI_STATUS=$?
-  if [ "$WEBUI_STATUS" -eq 0 ] && [ -n "$WEBUI_INFO" ]; then
-    /sbin/log_tool -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[NinjaLite] $WEBUI_INFO"
-  else
-    /sbin/log_tool -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[NinjaLite] Service started on port $QPKG_WEB_PORT; failed to retrieve WebUI access details: $WEBUI_INFO"
-  fi
+  "$CLI" config set token "$TOKEN" >/dev/null || { echo "Failed to configure WebUI token" >&2; exit 1; }
+  "$CLI" start --headless >>"$LOGFILE" 2>&1 & echo $! > "$PIDFILE"
+  /sbin/log_tool -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[NinjaLite] WebUI: http://<NAS-IP>:$QPKG_WEB_PORT  Token: $TOKEN"
 }
 
 stop_service() {
