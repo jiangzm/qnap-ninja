@@ -1,0 +1,75 @@
+#!/bin/sh
+CONF=/etc/config/qpkg.conf
+QPKG_NAME="ninja-lite"
+QPKG_ROOT=$(/sbin/getcfg "$QPKG_NAME" Install_Path -f "$CONF")
+QPKG_WEB_PORT=$(/sbin/getcfg "$QPKG_NAME" Web_Port -d 9190 -f "$CONF")
+PIDFILE="$QPKG_ROOT/ninjadesktop-lite.pid"
+CLI="$QPKG_ROOT/ninjadesktop-lite"
+
+export USER=admin
+export HOME="$QPKG_ROOT"
+export QNAP_QPKG=$QPKG_NAME
+export XDG_DATA_HOME="$QPKG_ROOT/.data"
+export XDG_CACHE_HOME="$QPKG_ROOT/.cache"
+export XDG_CONFIG_HOME="$QPKG_ROOT/.config"
+export NINJADESKTOP_SYSTEM_DIRS=1
+
+start_service() {
+  ENABLED=$(/sbin/getcfg "$QPKG_NAME" Enable -u -d FALSE -f "$CONF")
+  if [ "$ENABLED" != "TRUE" ]; then
+    echo "$QPKG_NAME is disabled."
+    exit 1
+  fi
+  [ -x "$CLI" ] || { echo "NinjaDesktop Lite executable not found: $CLI" >&2; exit 1; }
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    echo "$QPKG_NAME is already running."
+    return 0
+  fi
+  # QPKG Web_Port is the package manager's configured WebUI port.
+  case "$QPKG_WEB_PORT" in
+    ''|*[!0-9]*) echo "Invalid WebUI port: $QPKG_WEB_PORT" >&2; exit 1 ;;
+  esac
+  if [ "$QPKG_WEB_PORT" -lt 1 ] || [ "$QPKG_WEB_PORT" -gt 65535 ]; then
+    echo "Invalid WebUI port: $QPKG_WEB_PORT" >&2
+    exit 1
+  fi
+  "$CLI" config set listen 0.0.0.0 >/dev/null || { echo "Failed to configure WebUI listen address" >&2; exit 1; }
+  "$CLI" config set port "$QPKG_WEB_PORT" >/dev/null || { echo "Failed to configure WebUI port $QPKG_WEB_PORT" >&2; exit 1; }
+  "$CLI" start --headless >/dev/null 2>&1 &
+  echo $! > "$PIDFILE"
+
+  # Give the service a moment to initialize before querying its WebUI details.
+  sleep 2
+  WEBUI_INFO=$("$CLI" webui 2>&1)
+  WEBUI_STATUS=$?
+  if [ "$WEBUI_STATUS" -eq 0 ] && [ -n "$WEBUI_INFO" ]; then
+    /sbin/log_tool -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[NinjaLite] $WEBUI_INFO"
+  else
+    /sbin/log_tool -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[NinjaLite] Service started on port $QPKG_WEB_PORT; failed to retrieve WebUI access details: $WEBUI_INFO"
+  fi
+}
+
+stop_service() {
+  # Request a clean application shutdown first, then reap the tracked process.
+  [ ! -x "$CLI" ] || "$CLI" stop >/dev/null 2>&1 || true
+  if [ -f "$PIDFILE" ]; then
+    PID=$(cat "$PIDFILE")
+    kill "$PID" 2>/dev/null || true
+    i=0
+    while kill -0 "$PID" 2>/dev/null && [ "$i" -lt 30 ]; do
+      sleep 1
+      i=$((i + 1))
+    done
+    kill -9 "$PID" 2>/dev/null || true
+    rm -f "$PIDFILE"
+  fi
+}
+
+case "$1" in
+  start) start_service ;;
+  stop) stop_service ;;
+  restart) stop_service; start_service ;;
+  remove) stop_service ;;
+  *) echo "Usage: $0 {start|stop|restart|remove}"; exit 1 ;;
+esac
+exit 0
