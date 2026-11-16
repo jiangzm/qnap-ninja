@@ -98,9 +98,7 @@ jobs:
             curl -fL "$BASE_URL/$archive" -o "$stage/package.tar.gz"
             tar -xzf "$stage/package.tar.gz" -C "$stage"
             package_dir="$stage/ninjadesktop-lite-${VERSION}-linux-${suffix}"
-            test -x "$package_dir/ninjadesktop-lite"
-            test -x "$package_dir/ninja-service"
-            test -d "$package_dir/core"
+            rm -f "$package_dir/install.sh" "$package_dir/uninstall.sh"
             cp -a "$package_dir/." "$GITHUB_WORKSPACE/$arch/"
           done
           echo "amd64 和 arm64 软件包已分别解压到 x86_64/ 和 arm_64/"

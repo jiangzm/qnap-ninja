@@ -37,20 +37,14 @@ start_service() {
   if [ -s "$TOKENFILE" ]; then
     TOKEN=$(cat "$TOKENFILE")
   else
-    if command -v openssl >/dev/null 2>&1; then
-      TOKEN=$(openssl rand -hex 24) || { echo "Failed to generate WebUI token" >&2; exit 1; }
-    else
-      TOKEN=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
-    fi
-    [ -n "$TOKEN" ] || { echo "Failed to generate WebUI token" >&2; exit 1; }
-    (umask 077; printf '%s\n' "$TOKEN" > "$TOKENFILE") || { echo "Failed to save WebUI token" >&2; exit 1; }
+    TOKEN=$(openssl rand -hex 24) || { echo "Failed to generate WebUI token" >&2; exit 1; }
+    (umask 077; echo -n "$TOKEN" > "$TOKENFILE") || { echo "Failed to save WebUI token" >&2; exit 1; }
   fi
   /bin/ln -sf $QPKG_ROOT /opt/ninjadesktop-lite
   "$CLI" config set listen 0.0.0.0 >/dev/null || { echo "Failed to configure WebUI listen address" >&2; exit 1; }
   "$CLI" config set port "$QPKG_WEB_PORT" >/dev/null || { echo "Failed to configure WebUI port $QPKG_WEB_PORT" >&2; exit 1; }
   "$CLI" config set token "$TOKEN" >/dev/null || { echo "Failed to configure WebUI token" >&2; exit 1; }
-  "$CLI" start --headless >>"$LOGFILE" 2>&1 & echo $! > "$PIDFILE"
-  /sbin/log_tool -t1 -uSystem -p127.0.0.1 -mlocalhost -a "[NinjaLite] WebUI: http://<NAS-IP>:$QPKG_WEB_PORT  Token: $TOKEN"
+  "$CLI" start --headless >> "$LOGFILE" 2>&1 & echo $! > "$PIDFILE"
 }
 
 stop_service() {
