@@ -14,7 +14,6 @@ export QNAP_QPKG=$QPKG_NAME
 export XDG_DATA_HOME="$QPKG_ROOT/.data"
 export XDG_CACHE_HOME="$QPKG_ROOT/.cache"
 export XDG_CONFIG_HOME="$QPKG_ROOT/.config"
-export NINJADESKTOP_SYSTEM_DIRS=1
 
 start_service() {
   ENABLED=$(/sbin/getcfg "$QPKG_NAME" Enable -u -d FALSE -f "$CONF")
@@ -46,6 +45,7 @@ start_service() {
     [ -n "$TOKEN" ] || { echo "Failed to generate WebUI token" >&2; exit 1; }
     (umask 077; printf '%s\n' "$TOKEN" > "$TOKENFILE") || { echo "Failed to save WebUI token" >&2; exit 1; }
   fi
+  /bin/ln -sf $QPKG_ROOT /opt/ninjadesktop-lite
   "$CLI" config set listen 0.0.0.0 >/dev/null || { echo "Failed to configure WebUI listen address" >&2; exit 1; }
   "$CLI" config set port "$QPKG_WEB_PORT" >/dev/null || { echo "Failed to configure WebUI port $QPKG_WEB_PORT" >&2; exit 1; }
   "$CLI" config set token "$TOKEN" >/dev/null || { echo "Failed to configure WebUI token" >&2; exit 1; }
@@ -67,6 +67,7 @@ stop_service() {
     kill -9 "$PID" 2>/dev/null || true
     rm -f "$PIDFILE"
   fi
+  rm -rf /opt/ninjadesktop-lite
 }
 
 case "$1" in
