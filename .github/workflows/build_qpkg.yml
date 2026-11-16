@@ -72,8 +72,8 @@ jobs:
             if [ "$FORCE" = "true" ]; then
               echo "版本 v$VERSION 已存在，但强制构建已启用"
               echo "exists=false" >> $GITHUB_OUTPUT
-              git tag -d "v$VERSION" 2>/dev/null || true
-              git push origin ":refs/tags/v$VERSION" 2>/dev/null || true
+              git tag -d "v$VERSION"
+              git push origin ":refs/tags/v$VERSION"
             else
               echo "版本 v$VERSION 已存在，跳过构建"
               echo "exists=true" >> $GITHUB_OUTPUT
